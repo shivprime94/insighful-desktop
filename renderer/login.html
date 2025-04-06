@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Time Tracker - Login</title>
+  <link rel="stylesheet" href="./styles/login.css">
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <img src="../assets/logo.png" alt="Time Tracker Logo" class="logo">
+      <h1>Time Tracker</h1>
+    </div>
+    
+    <div class="login-form">
+      <div class="alert error-message" id="error-message" style="display: none;"></div>
+      
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="Enter your email" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter your password" required>
+      </div>
+      
+      <button id="login-button" class="btn-primary">Login</button>
+      
+      <div class="login-footer">
+        <p>Don't have an account? Contact your administrator.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="./scripts/login.js"></script>
+</body>
+</html>
