@@ -573,6 +573,33 @@ ipcMain.handle('get-time-logs', async (event, { startDate, endDate }) => {
   }
 });
 
+ipcMain.handle('get-screenshots', async (event, timeLogId) => {
+  try {
+    const token = store.get('authToken');
+    
+    if (!token) {
+      return { success: false, message: 'Authentication error' };
+    }
+    
+    const response = await axios.get(
+      `${API_URL}/screenshots/timelog/${timeLogId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    
+    return { success: true, data: response.data };
+  } catch (error) {
+    log.error('Error fetching screenshots:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Failed to fetch screenshots' 
+    };
+  }
+});
+
 // App event handlers
 app.on('ready', () => {
   log.info('App is ready');

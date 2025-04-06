@@ -16,6 +16,10 @@ const notification = document.getElementById('notification');
 const startDateInput = document.getElementById('start-date');
 const endDateInput = document.getElementById('end-date');
 const loadEntriesButton = document.getElementById('load-entries-button');
+const screenshotsModal = document.getElementById('screenshots-modal');
+const screenshotsContainer = document.getElementById('screenshots-container');
+const modalTitle = document.getElementById('modal-title');
+const closeModal = document.querySelector('.close-modal');
 
 // App State
 let activeTimeLog = null;
@@ -39,6 +43,14 @@ async function initApp() {
   stopButton.addEventListener('click', handleStopTracking);
   logoutButton.addEventListener('click', handleLogout);
   loadEntriesButton.addEventListener('click', loadTimeEntries);
+  
+  // Add modal event listeners
+  closeModal.addEventListener('click', hideScreenshotsModal);
+  window.addEventListener('click', (e) => {
+    if (e.target === screenshotsModal) {
+      hideScreenshotsModal();
+    }
+  });
   
   // Load initial time entries
   loadTimeEntries();
@@ -382,7 +394,7 @@ function displayTimeEntries(data) {
     const duration = log.duration ? formatDuration(log.duration) : 'In progress';
     
     html += `
-      <div class="time-entry">
+      <div class="time-entry" data-id="${log.id}">
         <div class="title">${log.Project.name} - ${log.Task.name}</div>
         <div class="details">
           <span>${formatDate(startTime)} ${formatTime(startTime)} - ${endTime ? formatTime(endTime) : 'In progress'}</span>
@@ -394,6 +406,69 @@ function displayTimeEntries(data) {
   });
   
   timeEntriesContainer.innerHTML = html;
+  
+  // Add click event listeners to each time entry
+  document.querySelectorAll('.time-entry').forEach(entry => {
+    entry.addEventListener('click', () => {
+      const timeLogId = entry.getAttribute('data-id');
+      const projectName = entry.querySelector('.title').textContent;
+      showScreenshots(timeLogId, projectName);
+    });
+  });
+}
+
+// Show screenshots modal for a specific time log
+async function showScreenshots(timeLogId, projectName) {
+  try {
+    // Show modal with loading state
+    modalTitle.textContent = `Screenshots - ${projectName}`;
+    screenshotsContainer.innerHTML = '<div class="loading-message">Loading screenshots...</div>';
+    screenshotsModal.style.display = 'block';
+    
+    // Fetch screenshots
+    const result = await ipcRenderer.invoke('get-screenshots', timeLogId);
+    
+    if (!result.success) {
+      screenshotsContainer.innerHTML = '<div class="no-screenshots">Failed to load screenshots</div>';
+      showNotification(result.message || 'Failed to load screenshots', 'error');
+      return;
+    }
+    
+    displayScreenshots(result.data);
+  } catch (error) {
+    console.error('Error loading screenshots:', error);
+    screenshotsContainer.innerHTML = '<div class="no-screenshots">Error loading screenshots</div>';
+    showNotification('Error loading screenshots', 'error');
+  }
+}
+
+// Display screenshots in the modal
+function displayScreenshots(screenshots) {
+  if (screenshots.length === 0) {
+    screenshotsContainer.innerHTML = '<div class="no-screenshots">No screenshots found for this time entry</div>';
+    return;
+  }
+  
+  let html = '';
+  screenshots.forEach(screenshot => {
+    const timestamp = new Date(screenshot.timestamp);
+    html += `
+      <div class="screenshot-item">
+        <img src="${screenshot.imageUrl}" alt="Screenshot" class="screenshot-image" onclick="window.open('${screenshot.imageUrl}', '_blank')">
+        <div class="screenshot-timestamp">
+          ${formatDate(timestamp)} ${formatTime(timestamp)}
+        </div>
+      </div>
+    `;
+  });
+  
+  screenshotsContainer.innerHTML = html;
+}
+
+// Hide screenshots modal
+function hideScreenshotsModal() {
+  screenshotsModal.style.display = 'none';
+  screenshotsContainer.innerHTML = '';
 }
 
 // Format duration in seconds to hh:mm:ss
