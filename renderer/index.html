@@ -62,6 +62,17 @@
       <!-- Recent Time Entries -->
       <div class="card">
         <h2>Recent Time Entries</h2>
+        <div class="date-range-selector">
+          <div class="form-group">
+            <label for="start-date">Start Date</label>
+            <input type="date" id="start-date" class="date-input">
+          </div>
+          <div class="form-group">
+            <label for="end-date">End Date</label>
+            <input type="date" id="end-date" class="date-input">
+          </div>
+          <button id="load-entries-button" class="btn-primary">Load Entries</button>
+        </div>
         <div class="time-entries" id="time-entries">
           <div class="loading-message">Loading time entries...</div>
         </div>

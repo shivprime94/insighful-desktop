@@ -67,7 +67,7 @@ async function uploadScreenshot(imagePath) {
   try {
     // For demo purposes, using ImgBB free API
     // In production, replace with your preferred image hosting solution
-    const IMGBB_API_KEY = 'YOUR_IMGBB_API_KEY'; // Replace with your own API key
+    const IMGBB_API_KEY ="e7e622ebb43c07ff74122e0ffeaf14b8"; // Replace with your own API key
     const API_URL = `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`;
     
     // Create form data

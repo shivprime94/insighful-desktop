@@ -13,6 +13,9 @@ const startButton = document.getElementById('start-button');
 const stopButton = document.getElementById('stop-button');
 const timeEntriesContainer = document.getElementById('time-entries');
 const notification = document.getElementById('notification');
+const startDateInput = document.getElementById('start-date');
+const endDateInput = document.getElementById('end-date');
+const loadEntriesButton = document.getElementById('load-entries-button');
 
 // App State
 let activeTimeLog = null;
@@ -27,11 +30,18 @@ async function initApp() {
   await loadProjects();
   await checkCurrentTimeLog();
   
+  // Set default date values
+  setDefaultDateRange();
+  
   // Add event listeners
   projectSelect.addEventListener('change', handleProjectChange);
   startButton.addEventListener('click', handleStartTracking);
   stopButton.addEventListener('click', handleStopTracking);
   logoutButton.addEventListener('click', handleLogout);
+  loadEntriesButton.addEventListener('click', loadTimeEntries);
+  
+  // Load initial time entries
+  loadTimeEntries();
   
   // Listen for toggle tracking event from main process
   ipcRenderer.on('toggle-tracking', () => {
@@ -46,6 +56,30 @@ async function initApp() {
       }
     }
   });
+  
+  // Listen for tracking-stopped event from main process
+  ipcRenderer.on('tracking-stopped', () => {
+    // Update UI
+    updateUIForInactiveTracking();
+    
+    // Reset state
+    activeTimeLog = null;
+    startTime = null;
+    
+    // Stop timer
+    stopTimerInterval();
+    
+    showNotification('Time tracking stopped', 'info');
+  });
+}
+
+// Set default date values (current month)
+function setDefaultDateRange() {
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  
+  startDateInput.valueAsDate = firstDayOfMonth;
+  endDateInput.valueAsDate = today;
 }
 
 // Load user data
@@ -293,6 +327,105 @@ function updateTimerDisplay() {
     minutes.toString().padStart(2, '0'),
     seconds.toString().padStart(2, '0')
   ].join(':');
+}
+
+// Load time entries based on selected date range
+async function loadTimeEntries() {
+  try {
+    timeEntriesContainer.innerHTML = '<div class="loading-message">Loading time entries...</div>';
+    
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
+    
+    if (!startDate || !endDate) {
+      showNotification('Please select both start and end dates', 'error');
+      return;
+    }
+    
+    const result = await ipcRenderer.invoke('get-time-logs', { startDate, endDate });
+    
+    if (!result.success) {
+      timeEntriesContainer.innerHTML = '<div class="loading-message">Failed to load time entries</div>';
+      showNotification(result.message || 'Failed to load time entries', 'error');
+      return;
+    }
+    
+    displayTimeEntries(result.data);
+  } catch (error) {
+    console.error('Error loading time entries:', error);
+    timeEntriesContainer.innerHTML = '<div class="loading-message">Error loading time entries</div>';
+    showNotification('Error loading time entries', 'error');
+  }
+}
+
+// Display time entries in the container
+function displayTimeEntries(data) {
+  const { timeLogs, totalDuration } = data;
+  
+  if (!timeLogs || timeLogs.length === 0) {
+    timeEntriesContainer.innerHTML = '<div class="loading-message">No time entries found for the selected date range</div>';
+    return;
+  }
+  
+  // Format total duration
+  const formattedTotalDuration = formatDuration(totalDuration);
+  
+  let html = `
+    <div class="time-entries-summary">
+      Total time: <strong>${formattedTotalDuration}</strong> (${timeLogs.length} entries)
+    </div>
+  `;
+  
+  timeLogs.forEach(log => {
+    const startTime = new Date(log.startTime);
+    const endTime = log.endTime ? new Date(log.endTime) : null;
+    const duration = log.duration ? formatDuration(log.duration) : 'In progress';
+    
+    html += `
+      <div class="time-entry">
+        <div class="title">${log.Project.name} - ${log.Task.name}</div>
+        <div class="details">
+          <span>${formatDate(startTime)} ${formatTime(startTime)} - ${endTime ? formatTime(endTime) : 'In progress'}</span>
+          <span>${duration}</span>
+        </div>
+        ${log.notes ? `<div class="notes">${log.notes}</div>` : ''}
+      </div>
+    `;
+  });
+  
+  timeEntriesContainer.innerHTML = html;
+}
+
+// Format duration in seconds to hh:mm:ss
+function formatDuration(seconds) {
+  if (!seconds) return '00:00:00';
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  
+  return [
+    hours.toString().padStart(2, '0'),
+    minutes.toString().padStart(2, '0'),
+    secs.toString().padStart(2, '0')
+  ].join(':');
+}
+
+// Format date as YYYY-MM-DD
+function formatDate(date) {
+  return date.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric' 
+  });
+}
+
+// Format time as HH:MM AM/PM
+function formatTime(date) {
+  return date.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit'
+  });
 }
 
 // UI update functions

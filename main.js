@@ -67,7 +67,7 @@ function createMainWindow() {
     mainWindow.show();
   });
 
-  // Handle window close
+  // Handle window close - just hide window instead of allowing it to be destroyed
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -76,7 +76,7 @@ function createMainWindow() {
     }
   });
 
-  // Handle window closed
+  // Only truly destroy window when app is actually quitting
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -268,8 +268,18 @@ async function startTracking(taskId, notes) {
       }
     );
     
-    // Start taking screenshots
-    startScreenshotInterval(response.data.timeLog.id);
+    // Make sure we have a valid time log ID
+    if (response.data.timeLog && response.data.timeLog.id) {
+      lastActiveTimeLogId = response.data.timeLog.id;
+      log.info(`Started tracking with time log ID: ${lastActiveTimeLogId}`);
+      // Store the time log ID in the store
+      store.set('activeTimeLogId', lastActiveTimeLogId);
+      
+      // Start taking screenshots
+      startScreenshotInterval(lastActiveTimeLogId);
+    } else {
+      log.error('Started tracking but no time log ID returned from API');
+    }
     
     return { success: true, data: response.data };
   } catch (error) {
@@ -284,35 +294,59 @@ async function startTracking(taskId, notes) {
 // Stop time tracking
 async function stopTracking(notes) {
   try {
-    if (!lastActiveTimeLogId) {
-      log.error('No active time log found');
-      return { success: false, message: 'No active time tracking session' };
-    }
-    
+    // First, try to get the current time log from the API
     const token = store.get('authToken');
+    lastActiveTimeLogId = store.get('activeTimeLogId');
     
-    if (!token) {
+    if (!token) { 
       log.error('No auth token found, cannot stop tracking');
       return { success: false, message: 'Authentication error' };
     }
-    
-    // Stop screenshot interval
-    stopScreenshotInterval();
-    
+
+    if (!lastActiveTimeLogId) {
+      log.error('No active time log ID found, cannot stop tracking');
+      return { success: false, message: 'No active time log to stop' };
+    }
     // Stop time tracking via API
     const response = await axios.put(
       `${API_URL}/time-tracking/stop/${lastActiveTimeLogId}`,
-      { notes },
+      {
+        notes
+      },
       {
         headers: {
           Authorization: `Bearer ${token}`
         }
       }
     );
+    log.info(`Stopped tracking with time log ID: ${lastActiveTimeLogId}`);
+    // Stop taking screenshots
+    stopScreenshotInterval();
+    log.info('Stopped screenshot interval');
+    // Remove the time log ID from the store
+    store.delete('activeTimeLogId');
+    log.info('Deleted active time log ID from store');
+    // Remove the time log ID from the variable
+    lastActiveTimeLogId = null;
+    
+    // Notify renderer process that tracking has stopped
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('tracking-stopped');
+    }
     
     return { success: true, data: response.data };
   } catch (error) {
     log.error('Error stopping time tracking:', error);
+    
+    // Reset tracking state on error to avoid getting stuck
+    stopScreenshotInterval();
+    lastActiveTimeLogId = null;
+    
+    // Notify renderer process even on error
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('tracking-stopped');
+    }
+    
     return { 
       success: false, 
       message: error.response?.data?.message || 'Failed to stop time tracking' 
@@ -345,6 +379,17 @@ ipcMain.handle('login', async (event, { email, password }) => {
     
     log.info(`User logged in: ${email}`);
     
+    // Create main window and close login window
+    if (!mainWindow) {
+      createMainWindow();
+    } else if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+    
+    if (loginWindow) {
+      loginWindow.close();
+    }
+    
     return { success: true, data: response.data };
   } catch (error) {
     log.error('Login error:', error);
@@ -367,6 +412,15 @@ ipcMain.handle('logout', async () => {
     store.delete('user');
     
     log.info('User logged out');
+    
+    // Close main window and open login window
+    if (mainWindow) {
+      mainWindow.close();
+    }
+    
+    if (!loginWindow) {
+      createLoginWindow();
+    }
     
     return { success: true };
   } catch (error) {
@@ -452,13 +506,18 @@ ipcMain.handle('get-current-timelog', async () => {
       {
         headers: {
           Authorization: `Bearer ${token}`
+        },
+        params: {
+          employeeId: store.get('user').id
         }
       }
     );
     
     if (response.data.active && response.data.timeLog.id) {
       lastActiveTimeLogId = response.data.timeLog.id;
-      
+
+      store.set('activeTimeLogId', lastActiveTimeLogId);
+      log.info(`Active time log ID stored: ${lastActiveTimeLogId}`);
       // If there's an active time log, start screenshot interval
       if (!screenshotInterval) {
         startScreenshotInterval(lastActiveTimeLogId);
@@ -481,6 +540,37 @@ ipcMain.handle('start-tracking', async (event, { taskId, notes }) => {
 
 ipcMain.handle('stop-tracking', async (event, { notes }) => {
   return await stopTracking(notes);
+});
+
+ipcMain.handle('get-time-logs', async (event, { startDate, endDate }) => {
+  try {
+    const token = store.get('authToken');
+    
+    if (!token) {
+      return { success: false, message: 'Authentication error' };
+    }
+    
+    const response = await axios.get(
+      `${API_URL}/time-tracking/logs`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        params: {
+          startDate,
+          endDate
+        }
+      }
+    );
+    
+    return { success: true, data: response.data };
+  } catch (error) {
+    log.error('Error fetching time logs:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Failed to fetch time logs' 
+    };
+  }
 });
 
 // App event handlers
@@ -514,8 +604,20 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  // This is a macOS-specific behavior where clicking on the dock icon
+  // should re-open the window if there are no windows open
   if (mainWindow === null) {
-    createMainWindow();
+    // Check if user is authenticated
+    const token = store.get('authToken');
+    
+    if (token) {
+      createMainWindow();
+    } else {
+      createLoginWindow();
+    }
+  } else if (!mainWindow.isVisible()) {
+    // If the window exists but is hidden, show it
+    mainWindow.show();
   }
 });
 

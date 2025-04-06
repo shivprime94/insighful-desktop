@@ -265,3 +265,29 @@ button:disabled {
   background-color: #fff3cd;
   color: #856404;
 }
+
+/* Date Range Selector */
+.date-range-selector {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-end;
+}
+
+.date-range-selector .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.date-input {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+#load-entries-button {
+  padding: 0.5rem 1rem;
+  height: 38px;
+}
