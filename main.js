@@ -20,7 +20,7 @@ const store = new Store({
 });
 
 // App configuration
-const API_URL = 'http://localhost:3001/api';
+const API_URL = 'https://insighful-backend-bu10.onrender.com/api';
 const SCREENSHOT_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Keep a global reference of the window objects
